@@ -955,6 +955,48 @@ impl StellarKraal {
         Ok(())
     }
 
+    pub fn accrue_interest(env: Env, loan_id: u64) -> Result<i128, Error> {
+        Self::assert_initialized(&env)?;
+        let mut loan: LoanRecord = env
+            .storage()
+            .persistent()
+            .get(&DataKey::Loan(loan_id))
+            .ok_or(Error::LoanNotFound)?;
+        if loan.status != LoanStatus::Active {
+            return Err(Error::LoanAlreadyClosed);
+        }
+
+        let now = env.ledger().timestamp();
+        let elapsed = now.saturating_sub(loan.last_interest_time);
+        if elapsed == 0 || loan.outstanding == 0 {
+            return Ok(0);
+        }
+
+        let rate_bps: u32 = env.storage().instance().get(&INT_FEE).unwrap();
+        let interest = loan
+            .outstanding
+            .checked_mul(rate_bps as i128)
+            .and_then(|value| value.checked_mul(elapsed as i128))
+            .ok_or(Error::ArithmeticOverflow)?
+            / (10_000i128 * 31_536_000i128);
+        loan.interest_accrued = loan
+            .interest_accrued
+            .checked_add(interest)
+            .ok_or(Error::ArithmeticOverflow)?;
+        loan.last_interest_time = now;
+        env.storage().persistent().set(&DataKey::Loan(loan_id), &loan);
+        env.storage().persistent().extend_ttl(
+            &DataKey::Loan(loan_id),
+            PERSISTENT_TTL_THRESHOLD,
+            PERSISTENT_TTL_LEDGERS,
+        );
+        env.events().publish(
+            (Symbol::new(&env, "Interest"), Symbol::new(&env, "accrued")),
+            (loan_id, interest, now),
+        );
+        Ok(interest)
+    }
+
     // ── liquidate ─────────────────────────────────────────────────────────
     /// Liquidate an undercollateralised loan position.
     pub fn liquidate(env: Env, liquidator: Address, loan_id: u64, repay_amount: i128) -> Result<(), Error> {

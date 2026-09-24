@@ -1021,6 +1021,22 @@ fn test_repay_more_than_outstanding_caps_at_outstanding() {
     assert_eq!(loan.outstanding, 0);
 }
 
+#[test]
+fn test_accrue_interest_is_idempotent() {
+    let (env, cid, admin, oracle, token, treasury) = setup();
+    init(&env, &cid, &admin, &oracle, &token, &treasury);
+    let client = StellarKraalClient::new(&env, &cid);
+    let borrower = Address::generate(&env);
+    let col_id = client.register_livestock(&borrower, &symbol_short!("cattle"), &2u32, &100_000_000i128);
+    let loan_id = client.request_loan(&borrower, &vec![&env, col_id], &20_000_000i128, &None);
+
+    assert_eq!(client.accrue_interest(&loan_id), 0);
+    env.ledger().with_mut(|li| li.timestamp += 31_536_000);
+    assert_eq!(client.accrue_interest(&loan_id), 2_000_000);
+    assert_eq!(client.accrue_interest(&loan_id), 0);
+    assert_eq!(client.get_loan(&loan_id).interest_accrued, 2_000_000);
+}
+
 // ── pause / unpause ───────────────────────────────────────────────────
 #[test]
 fn test_pause_by_admin_ok() {
