@@ -510,6 +510,10 @@ impl StellarKraal {
         env.storage().instance().set(&PAUSE_EXP, &expires_at);
         env.events().publish(
             (symbol_short!("Pause"), symbol_short!("activated")),
+            (admin.clone(), expires_at),
+        );
+        env.events().publish(
+            (Symbol::new(&env, "ContractPaused"),),
             (admin, expires_at),
         );
         Ok(())
@@ -534,8 +538,9 @@ impl StellarKraal {
         env.storage().instance().set(&PAUSE_EXP, &0u64);
         env.events().publish(
             (symbol_short!("Pause"), symbol_short!("lifted")),
-            (admin, true),
+            (admin.clone(), true),
         );
+        env.events().publish((Symbol::new(&env, "ContractUnpaused"),), admin);
         Ok(())
     }
 
@@ -713,6 +718,7 @@ impl StellarKraal {
         new_value: i128,
     ) -> Result<(), Error> {
         Self::assert_initialized(&env)?;
+        Self::assert_not_paused(&env)?;
         caller.require_auth();
 
         if new_value <= 0 {
