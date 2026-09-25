@@ -61,6 +61,20 @@ const TABS: { id: TabName; label: string }[] = [
   { id: "transactions", label: "Transactions" },
 ];
 
+type TabName = "overview" | "loans" | "collateral" | "transactions";
+type LoanWithHealth = {
+  id: string;
+  health_factor?: number | null;
+  status?: string;
+};
+
+const TABS: { id: TabName; label: string }[] = [
+  { id: "overview", label: "Overview" },
+  { id: "loans", label: "Loans" },
+  { id: "collateral", label: "Collateral" },
+  { id: "transactions", label: "Transactions" },
+];
+
 export default function DashboardClient() {
   const router = useRouter();
   const toast = useToast();
