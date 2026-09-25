@@ -95,6 +95,7 @@ import { etagMiddleware } from './utils/etag';
 import { scheduleHealthFactorJob, runHealthFactorJob } from './jobs/healthFactorJob';
 import { scheduleRepaymentReminderJob } from './jobs/repaymentReminderJob';
 import { compressionMiddleware } from './middleware/compression';
+import { sanitizeInput } from './middleware/sanitize';
 import { apiKeyRouter } from './middleware/apiKey';
 import { deduplicationMiddleware } from './middleware/deduplication';
 import { v2Router } from './routes/v2';
@@ -136,6 +137,7 @@ const app = express();
 app.use(helmetMiddleware);
 app.use(corsMiddleware);
 app.use(express.json());
+app.use(sanitizeInput);
 app.use(compressionMiddleware);
 
 // Request draining middleware - track in-flight requests for graceful shutdown
