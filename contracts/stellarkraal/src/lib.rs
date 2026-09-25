@@ -96,6 +96,7 @@ const MAX_EXTENSIONS: Symbol = symbol_short!("MAXEXT");
 // ── Issue #669 storage keys ──────────────────────────────────────────────────
 const PNDG_WASM: Symbol = symbol_short!("PNDGWASM");
 const UPG_TIME: Symbol = symbol_short!("UPGTIME");
+const ACTIVE_WASM: Symbol = symbol_short!("ACT_WASM");
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -1882,6 +1883,27 @@ impl StellarKraal {
         })
     }
 
+    // ── upgrade ───────────────────────────────────────────────────────────
+    /// Upgrade the contract WASM immediately when authorized by the admin.
+    pub fn upgrade(env: Env, admin: Address, new_wasm_hash: BytesN<32>) -> Result<(), Error> {
+        Self::assert_initialized(&env)?;
+        Self::assert_admin(&env, &admin)?;
+        admin.require_auth();
+
+        let old_wasm_hash: BytesN<32> = env
+            .storage()
+            .instance()
+            .get(&ACTIVE_WASM)
+            .unwrap_or(BytesN::from_array(&env, &[0u8; 32]));
+        env.deployer().update_current_contract_wasm(new_wasm_hash.clone());
+        env.storage().instance().set(&ACTIVE_WASM, &new_wasm_hash);
+        env.events().publish(
+            (Symbol::new(&env, "ContractUpgraded"), symbol_short!("upgrade")),
+            (old_wasm_hash, new_wasm_hash),
+        );
+        Ok(())
+    }
+
     // ── propose_upgrade ───────────────────────────────────────────────────
     /// Propose a WASM upgrade (Step 1 of two-step upgrade, issue #669).
     pub fn propose_upgrade(
@@ -1926,12 +1948,18 @@ impl StellarKraal {
         env.storage().persistent().remove(&DataKey::PendingWasm);
         env.storage().persistent().remove(&DataKey::UpgradeTime);
 
+        let old_wasm_hash: BytesN<32> = env
+            .storage()
+            .instance()
+            .get(&ACTIVE_WASM)
+            .unwrap_or(BytesN::from_array(&env, &[0u8; 32]));
+        env.deployer().update_current_contract_wasm(wasm_hash.clone());
+        env.storage().instance().set(&ACTIVE_WASM, &wasm_hash);
         env.events().publish(
-            (symbol_short!("upgrade"), symbol_short!("executed")),
-            (wasm_hash.clone(), now),
+            (Symbol::new(&env, "ContractUpgraded"), symbol_short!("upgrade")),
+            (old_wasm_hash, wasm_hash.clone()),
         );
 
-        env.deployer().update_current_contract_wasm(wasm_hash);
         Ok(())
     }
 
