@@ -19,6 +19,41 @@ use soroban_sdk::{
     Env, String, Symbol, Vec,
 };
 
+pub fn compute_health_factor(
+    collateral_value: i128,
+    liquidation_threshold_bps: u32,
+    debt: i128,
+) -> Option<i128> {
+    if collateral_value <= 0 || debt <= 0 {
+        return None;
+    }
+    collateral_value
+        .checked_mul(liquidation_threshold_bps as i128)?
+        .checked_mul(10_000)?
+        .checked_div(debt)
+}
+
+pub fn compute_ltv(collateral_value: i128, ltv_bps: u32) -> Option<i128> {
+    if collateral_value <= 0 || ltv_bps == 0 || ltv_bps > 10_000 {
+        return None;
+    }
+    collateral_value.checked_mul(ltv_bps as i128)?.checked_div(10_000)
+}
+
+pub fn compute_interest_accrual(
+    outstanding: i128,
+    rate_bps: u32,
+    elapsed_seconds: u64,
+) -> Option<i128> {
+    if outstanding <= 0 || rate_bps == 0 || elapsed_seconds == 0 {
+        return None;
+    }
+    outstanding
+        .checked_mul(rate_bps as i128)?
+        .checked_mul(elapsed_seconds as i128)?
+        .checked_div(10_000i128 * 31_536_000i128)
+}
+
 // ── Storage keys ────────────────────────────────────────────────────────────
 const ADMIN: Symbol = symbol_short!("ADMIN");
 const ORACLE: Symbol = symbol_short!("ORACLE");
@@ -817,10 +852,7 @@ impl StellarKraal {
         }
 
         let ltv: u32 = env.storage().instance().get(&LTV).unwrap();
-        let max_loan = total_collateral_value
-            .checked_mul(ltv as i128)
-            .ok_or(Error::InvalidAmount)?
-            / 10_000;
+        let max_loan = compute_ltv(total_collateral_value, ltv).ok_or(Error::InvalidAmount)?;
 
         if amount > max_loan {
             return Err(Error::InsufficientCollateral);
