@@ -643,6 +643,35 @@ impl StellarKraal {
         Ok(())
     }
 
+    pub fn set_min_collateral_value(
+        env: Env,
+        admin: Address,
+        min_value: i128,
+    ) -> Result<(), Error> {
+        Self::assert_initialized(&env)?;
+        Self::assert_admin(&env, &admin)?;
+        admin.require_auth();
+        if min_value <= 0 {
+            return Err(Error::InvalidAmount);
+        }
+        let old_value: i128 = env
+            .storage()
+            .instance()
+            .get(&MIN_COLLATERAL)
+            .unwrap_or(DEFAULT_MIN_COLLATERAL);
+        env.storage().instance().set(&MIN_COLLATERAL, &min_value);
+        env.events().publish(
+            (symbol_short!("Admin"), symbol_short!("MinColl")),
+            (old_value, min_value),
+        );
+        Ok(())
+    }
+
+    pub fn get_min_collateral_value(env: Env) -> Result<i128, Error> {
+        Self::assert_initialized(&env)?;
+        Ok(env.storage().instance().get(&MIN_COLLATERAL).unwrap_or(DEFAULT_MIN_COLLATERAL))
+    }
+
     // ── get_liquidation_threshold ─────────────────────────────────────────
     /// Return the current liquidation threshold in basis points.
     ///
@@ -712,6 +741,14 @@ impl StellarKraal {
         Self::assert_not_paused(&env)?;
         if appraised_value <= 0 || count == 0 {
             return Err(Error::InvalidAmount);
+        }
+        let min_value: i128 = env
+            .storage()
+            .instance()
+            .get(&MIN_COLLATERAL)
+            .unwrap_or(DEFAULT_MIN_COLLATERAL);
+        if appraised_value < min_value {
+            return Err(Error::CollateralValueTooLow);
         }
         if let Some(max_value) = env
             .storage()
