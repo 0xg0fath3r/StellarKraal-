@@ -843,6 +843,18 @@ impl StellarKraal {
         }
         borrower.require_auth();
 
+        let now_sequence = env.ledger().sequence();
+        let cooldown: u32 = env.storage().instance().get(&LOAN_COOLDOWN).unwrap_or(DEFAULT_LOAN_COOLDOWN);
+        if let Some(last_sequence) = env
+            .storage()
+            .persistent()
+            .get::<_, u32>(&DataKey::LastLoanRequest(borrower.clone()))
+        {
+            if now_sequence.saturating_sub(last_sequence) < cooldown {
+                return Err(Error::CooldownActive);
+            }
+        }
+
         let mut total_collateral_value: i128 = 0;
         for col_id in collateral_ids.iter() {
             let collateral: CollateralRecord = env
@@ -910,6 +922,15 @@ impl StellarKraal {
         }
 
         token_client.transfer(&env.current_contract_address(), &borrower, &disbursement);
+
+        env.storage()
+            .persistent()
+            .set(&DataKey::LastLoanRequest(borrower.clone()), &now_sequence);
+        env.storage().persistent().extend_ttl(
+            &DataKey::LastLoanRequest(borrower.clone()),
+            PERSISTENT_TTL_THRESHOLD,
+            PERSISTENT_TTL_LEDGERS,
+        );
 
         env.events().publish(
             (symbol_short!("loan"), Symbol::new(&env, "requested")),
@@ -1634,6 +1655,28 @@ impl StellarKraal {
         let min_loan: i128 = env.storage().instance().get(&MIN_LOAN).unwrap_or(DEFAULT_MIN_LOAN);
         let max_loan: i128 = env.storage().instance().get(&MAX_LOAN).unwrap_or(DEFAULT_MAX_LOAN);
         Ok((min_loan, max_loan))
+    }
+
+    pub fn set_loan_cooldown(
+        env: Env,
+        admin: Address,
+        cooldown_ledgers: u32,
+    ) -> Result<(), Error> {
+        Self::assert_initialized(&env)?;
+        Self::assert_admin(&env, &admin)?;
+        admin.require_auth();
+
+        env.storage().instance().set(&LOAN_COOLDOWN, &cooldown_ledgers);
+        env.events().publish(
+            (symbol_short!("Admin"), symbol_short!("LoanCd")),
+            cooldown_ledgers,
+        );
+        Ok(())
+    }
+
+    pub fn get_loan_cooldown(env: Env) -> Result<u32, Error> {
+        Self::assert_initialized(&env)?;
+        Ok(env.storage().instance().get(&LOAN_COOLDOWN).unwrap_or(DEFAULT_LOAN_COOLDOWN))
     }
 
     // ── get_ltv ──────────────────────────────────────────────────────────
